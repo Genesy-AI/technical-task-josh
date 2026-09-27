@@ -1,0 +1,12 @@
+firstName,lastName,email,jobTitle,countryCode,companyName,phoneNumber,yearsAtCompany,linkedinUrl
+Ada,Lovelace,ada.lovelace@example.com,Head of Engineering,GB,Analytical Engines Ltd,+44 20 7946 0958,7,https://www.linkedin.com/in/ada-lovelace
+Grace,Hopper,grace.hopper@example.com,CTO,US,Compiler Corp,(415)555-0132,12,linkedin.com/in/grace-hopper
+Alan,Turing,alan.turing@example.com,Research Lead,GB,Enigma Labs,020-7946-0321x42,0,http://uk.linkedin.com/in/alan-turing/
+Katherine,Johnson,katherine.johnson@example.com,Data Scientist,US,Orbital Analytics,757.555.0187,3,
+Linus,Svensson,linus.svensson@example.com,Product Manager,SE,Nordic Apps AB,,5,https://www.linkedin.com/in/linus-svensson
+Marta,Garcia,marta.garcia@example.com,Sales Director,ES,Iberia Growth SL,+34 912 345 678,,https://es.linkedin.com/in/marta-garcia
+Hedy,Lamarr,hedy.lamarr@example.com,Founder,AT,Frequency Hop GmbH,call me maybe,4,https://www.linkedin.com/in/hedy-lamarr
+Margaret,Hamilton,margaret.hamilton@example.com,VP Software,US,Apollo Systems,617-555-0199,-2,https://www.linkedin.com/in/margaret-hamilton
+Tim,Berners,tim.berners@example.com,Architect,GB,Web Foundry,+44 161 496 0754,2.5,https://www.linkedin.com/in/tim-berners
+Radia,Perlman,radia.perlman@example.com,Network Engineer,US,Spanning Tree Inc,408-555-0143,9,https://www.linkedin.com/company/spanning-tree
+Barbara,Liskov,barbara.liskov@example.com,Principal Engineer,US,Substitution Co,12345,6,https://twitter.com/barbara

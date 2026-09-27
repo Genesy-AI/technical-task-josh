@@ -4,6 +4,7 @@ import { Connection, Client, TimeoutFailure } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { isValidCountryCode, normalizeCountryCode } from './utils/countryCodes'
+import { isValidPhoneNumber, normalizeLinkedinUrl, parseYearsAtCompany } from './utils/leadValidation'
 import { runTemporalWorker } from './worker'
 const prisma = new PrismaClient()
 const app = express()
@@ -191,14 +192,20 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
         lead.lastName.trim() &&
         typeof lead.email === 'string' &&
         lead.email.trim() &&
-        (!lead.countryCode || (typeof lead.countryCode === 'string' && isValidCountryCode(lead.countryCode)))
+        (!lead.countryCode || (typeof lead.countryCode === 'string' && isValidCountryCode(lead.countryCode))) &&
+        (!lead.phoneNumber || (typeof lead.phoneNumber === 'string' && isValidPhoneNumber(lead.phoneNumber))) &&
+        (lead.yearsAtCompany === undefined ||
+          lead.yearsAtCompany === null ||
+          parseYearsAtCompany(lead.yearsAtCompany) !== null) &&
+        (!lead.linkedinUrl ||
+          (typeof lead.linkedinUrl === 'string' && normalizeLinkedinUrl(lead.linkedinUrl) !== null))
       )
     })
 
     if (validLeads.length === 0) {
       return res.status(400).json({
         error:
-          'No valid leads found. firstName, lastName, and email are required, and countryCode must be a valid ISO 3166-1 alpha-2 code.',
+          'No valid leads found. firstName, lastName, and email are required, and optional fields (countryCode, phoneNumber, yearsAtCompany, linkedinUrl) must be valid.',
       })
     }
 
@@ -232,6 +239,9 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
             countryCode: lead.countryCode ? normalizeCountryCode(lead.countryCode) : null,
             companyName: lead.companyName ? lead.companyName.trim() : null,
+            phoneNumber: lead.phoneNumber ? lead.phoneNumber.trim() : null,
+            yearsAtCompany: parseYearsAtCompany(lead.yearsAtCompany),
+            linkedinUrl: lead.linkedinUrl ? normalizeLinkedinUrl(lead.linkedinUrl) : null,
           },
         })
         importedCount++

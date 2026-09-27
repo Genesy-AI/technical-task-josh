@@ -181,6 +181,56 @@ Bob,Johnson,bob@example.com,UK`
     expect(result[2].errors).toEqual(['Invalid country code: UK'])
   })
 
+  it('should parse phone, years and LinkedIn fields', () => {
+    const csv = `firstName,lastName,email,phoneNumber,yearsAtCompany,linkedinUrl
+John,Doe,john@example.com,+1-280-754-0462x2154,5,linkedin.com/in/john-doe`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].phoneNumber).toBe('+1-280-754-0462x2154')
+    expect(result[0].yearsAtCompany).toBe(5)
+    expect(result[0].linkedinUrl).toBe('https://linkedin.com/in/john-doe')
+  })
+
+  it('should map yearsInRole and phone header aliases', () => {
+    const csv = `firstName,lastName,email,yearsInRole,phone,linkedin
+John,Doe,john@example.com,0,(731)123-9702,https://www.linkedin.com/in/john-doe`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].yearsAtCompany).toBe(0)
+    expect(result[0].phoneNumber).toBe('(731)123-9702')
+    expect(result[0].linkedinUrl).toBe('https://www.linkedin.com/in/john-doe')
+  })
+
+  it('should allow new optional fields to be empty', () => {
+    const csv = `firstName,lastName,email,yearsInRole,phoneNumber,linkedinUrl
+John,Doe,john@example.com,,,`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].phoneNumber).toBeUndefined()
+    expect(result[0].yearsAtCompany).toBeUndefined()
+    expect(result[0].linkedinUrl).toBeUndefined()
+  })
+
+  it('should mark leads with invalid phone, years or LinkedIn values as invalid', () => {
+    const csv = `firstName,lastName,email,phoneNumber,yearsInRole,linkedinUrl
+John,Doe,john@example.com,call me,-2,https://linkedin.com/company/acme`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].isValid).toBe(false)
+    expect(result[0].errors).toEqual([
+      'Invalid phone number: call me',
+      'Invalid years at company: -2',
+      'Invalid LinkedIn URL: https://linkedin.com/company/acme',
+    ])
+  })
+
   it('should preserve row index correctly', () => {
     const csv = `firstName,lastName,email
 John,Doe,john@example.com
