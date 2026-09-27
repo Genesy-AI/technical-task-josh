@@ -1,4 +1,6 @@
 import Papa from 'papaparse'
+import { isValidCountryCode, normalizeCountryCode } from './countryCodes'
+import { isValidPhoneNumber, normalizeLinkedinUrl, parseYearsAtCompany } from './leadValidation'
 
 export interface CsvLead {
   firstName: string
@@ -7,6 +9,9 @@ export interface CsvLead {
   jobTitle?: string
   countryCode?: string
   companyName?: string
+  phoneNumber?: string
+  yearsAtCompany?: number
+  linkedinUrl?: string
   isValid: boolean
   errors: string[]
   rowIndex: number
@@ -49,6 +54,8 @@ export const parseCsv = (content: string): CsvLead[] => {
     if (Object.values(row).every((value) => !value)) return
 
     const lead: Partial<CsvLead> = { rowIndex: index + 2 }
+    let rawYearsAtCompany = ''
+    let rawLinkedinUrl = ''
 
     Object.entries(row).forEach(([header, value]) => {
       const normalizedHeader = header.toLowerCase().replace(/[^a-z]/g, '')
@@ -68,10 +75,22 @@ export const parseCsv = (content: string): CsvLead[] => {
           lead.jobTitle = trimmedValue || undefined
           break
         case 'countrycode':
-          lead.countryCode = trimmedValue || undefined
+          lead.countryCode = normalizeCountryCode(trimmedValue) || undefined
           break
         case 'companyname':
           lead.companyName = trimmedValue || undefined
+          break
+        case 'phonenumber':
+        case 'phone':
+          lead.phoneNumber = trimmedValue || undefined
+          break
+        case 'yearsatcompany':
+        case 'yearsinrole':
+          rawYearsAtCompany = trimmedValue
+          break
+        case 'linkedinurl':
+        case 'linkedin':
+          rawLinkedinUrl = trimmedValue
           break
       }
     })
@@ -87,6 +106,28 @@ export const parseCsv = (content: string): CsvLead[] => {
       errors.push('Email is required')
     } else if (!isValidEmail(lead.email)) {
       errors.push('Invalid email format')
+    }
+    if (lead.countryCode && !isValidCountryCode(lead.countryCode)) {
+      errors.push(`Invalid country code: ${lead.countryCode}`)
+    }
+    if (lead.phoneNumber && !isValidPhoneNumber(lead.phoneNumber)) {
+      errors.push(`Invalid phone number: ${lead.phoneNumber}`)
+    }
+    if (rawYearsAtCompany) {
+      const yearsAtCompany = parseYearsAtCompany(rawYearsAtCompany)
+      if (yearsAtCompany === null) {
+        errors.push(`Invalid years at company: ${rawYearsAtCompany}`)
+      } else {
+        lead.yearsAtCompany = yearsAtCompany
+      }
+    }
+    if (rawLinkedinUrl) {
+      const linkedinUrl = normalizeLinkedinUrl(rawLinkedinUrl)
+      if (linkedinUrl === null) {
+        errors.push(`Invalid LinkedIn URL: ${rawLinkedinUrl}`)
+      } else {
+        lead.linkedinUrl = linkedinUrl
+      }
     }
 
     data.push({

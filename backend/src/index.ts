@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client'
 import express, { Request, Response } from 'express'
-import { Connection, Client } from '@temporalio/client'
+import { Connection, Client, TimeoutFailure } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
+import { isValidCountryCode, normalizeCountryCode } from './utils/countryCodes'
+import { isValidPhoneNumber, normalizeLinkedinUrl, parseYearsAtCompany } from './utils/leadValidation'
 import { runTemporalWorker } from './worker'
 const prisma = new PrismaClient()
 const app = express()
@@ -189,14 +191,22 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
         typeof lead.lastName === 'string' &&
         lead.lastName.trim() &&
         typeof lead.email === 'string' &&
-        lead.email.trim()
+        lead.email.trim() &&
+        (!lead.countryCode || (typeof lead.countryCode === 'string' && isValidCountryCode(lead.countryCode))) &&
+        (!lead.phoneNumber || (typeof lead.phoneNumber === 'string' && isValidPhoneNumber(lead.phoneNumber))) &&
+        (lead.yearsAtCompany === undefined ||
+          lead.yearsAtCompany === null ||
+          parseYearsAtCompany(lead.yearsAtCompany) !== null) &&
+        (!lead.linkedinUrl ||
+          (typeof lead.linkedinUrl === 'string' && normalizeLinkedinUrl(lead.linkedinUrl) !== null))
       )
     })
 
     if (validLeads.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'No valid leads found. firstName, lastName, and email are required.' })
+      return res.status(400).json({
+        error:
+          'No valid leads found. firstName, lastName, and email are required, and optional fields (countryCode, phoneNumber, yearsAtCompany, linkedinUrl) must be valid.',
+      })
     }
 
     const existingLeads = await prisma.lead.findMany({
@@ -227,8 +237,11 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
             lastName: lead.lastName.trim(),
             email: lead.email.trim(),
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
-            countryCode: lead.countryCode ? lead.countryCode.trim() : null,
+            countryCode: lead.countryCode ? normalizeCountryCode(lead.countryCode) : null,
             companyName: lead.companyName ? lead.companyName.trim() : null,
+            phoneNumber: lead.phoneNumber ? lead.phoneNumber.trim() : null,
+            yearsAtCompany: parseYearsAtCompany(lead.yearsAtCompany),
+            linkedinUrl: lead.linkedinUrl ? normalizeLinkedinUrl(lead.linkedinUrl) : null,
           },
         })
         importedCount++
@@ -253,6 +266,18 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
   }
 })
 
+// Temporal wraps activity errors (WorkflowFailedError -> ActivityFailure -> ...), so report the root cause
+const getVerificationErrorMessage = (error: unknown): string => {
+  let rootCause = error
+  while (rootCause instanceof Error && (rootCause as { cause?: unknown }).cause instanceof Error) {
+    rootCause = (rootCause as { cause?: unknown }).cause
+  }
+  if (rootCause instanceof TimeoutFailure) {
+    return 'Verification timed out'
+  }
+  return rootCause instanceof Error ? rootCause.message : 'Unknown error'
+}
+
 app.post('/leads/verify-emails', async (req: Request, res: Response) => {
   if (!req.body || typeof req.body !== 'object') {
     return res.status(400).json({ error: 'Request body is required and must be valid JSON' })
@@ -276,37 +301,40 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
     const connection = await Connection.connect({ address: 'localhost:7233' })
     const client = new Client({ connection, namespace: 'default' })
 
-    let verifiedCount = 0
-    const results: Array<{ leadId: number; emailVerified: boolean }> = []
-    const errors: Array<{ leadId: number; leadName: string; error: string }> = []
+    try {
+      const results: Array<{ leadId: number; emailVerified: boolean }> = []
+      const errors: Array<{ leadId: number; leadName: string; error: string }> = []
 
-    for (const lead of leads) {
-      try {
-        const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
-          taskQueue: 'myQueue',
-          workflowId: `verify-email-${lead.id}-${Date.now()}`,
-          args: [lead.email],
-        })
+      await Promise.all(
+        leads.map(async (lead) => {
+          try {
+            const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
+              taskQueue: 'myQueue',
+              workflowId: `verify-email-${lead.id}-${Date.now()}`,
+              workflowExecutionTimeout: '1 minute',
+              args: [lead.email],
+            })
 
-        await prisma.lead.update({
-          where: { id: lead.id },
-          data: { emailVerified: Boolean(isVerified) },
-        })
+            await prisma.lead.update({
+              where: { id: lead.id },
+              data: { emailVerified: Boolean(isVerified) },
+            })
 
-        results.push({ leadId: lead.id, emailVerified: isVerified })
-        verifiedCount += 1
-      } catch (error) {
-        errors.push({
-          leadId: lead.id,
-          leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-          error: error instanceof Error ? error.message : 'Unknown error',
+            results.push({ leadId: lead.id, emailVerified: isVerified })
+          } catch (error) {
+            errors.push({
+              leadId: lead.id,
+              leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+              error: getVerificationErrorMessage(error),
+            })
+          }
         })
-      }
+      )
+
+      res.json({ success: true, verifiedCount: results.length, results, errors })
+    } finally {
+      await connection.close()
     }
-
-    await connection.close()
-
-    res.json({ success: true, verifiedCount, results, errors })
   } catch (error) {
     console.error('Error verifying emails:', error)
     res.status(500).json({ error: 'Failed to verify emails' })
